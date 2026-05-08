@@ -1,0 +1,49 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: python-cicd-app-prod
+  namespace: argocd
+  labels:
+    app: python-cicd-app
+    env: production
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: production-project       # Restricted ArgoCD project for prod
+
+  source:
+    repoURL: https://github.com/your-org/python-cicd-project.git
+    targetRevision: HEAD             # Pinned by Jenkins to a specific commit SHA
+    path: helm/python-app
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-prod.yaml
+      parameters:
+        - name: image.tag
+          value: latest              # Overwritten by Jenkins with exact SHA tag
+
+  destination:
+    server: https://prod-k8s-api.company.com:6443   # External prod cluster
+    namespace: production
+
+  # ── PRODUCTION: manual sync only — no auto-sync! ─────────────
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false        # Namespace must already exist in prod
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    retry:
+      limit: 2
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 10m
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+
+  revisionHistoryLimit: 20          # Keep longer history for prod auditing

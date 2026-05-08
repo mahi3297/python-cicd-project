@@ -1,0 +1,30 @@
+# ── Staging environment overrides ────────────────────────────
+replicaCount: 2
+
+app:
+  env: staging
+  debug: "false"
+
+ingress:
+  hosts:
+    - host: staging-app.company.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: python-app-staging-tls
+      hosts:
+        - staging-app.company.com
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5

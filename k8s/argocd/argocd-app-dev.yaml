@@ -1,0 +1,64 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: python-cicd-app-dev
+  namespace: argocd
+  labels:
+    app: python-cicd-app
+    env: dev
+  # Finalizer ensures ArgoCD cleans up K8s resources when app is deleted
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  # ── Source: your Git repository ──────────────────────────────
+  source:
+    repoURL: https://github.com/your-org/python-cicd-project.git
+    targetRevision: develop          # Track develop branch for dev
+    path: helm/python-app            # Path to Helm chart in repo
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-dev.yaml
+      # Image tag updated by Jenkins after each build
+      parameters:
+        - name: image.tag
+          value: latest              # Jenkins overwrites this via ArgoCD CLI
+
+  # ── Destination: Kubernetes cluster + namespace ───────────────
+  destination:
+    server: https://kubernetes.default.svc   # In-cluster
+    namespace: dev
+
+  # ── Sync policy: auto-sync on git changes ────────────────────
+  syncPolicy:
+    automated:
+      prune: true           # Remove resources deleted from git
+      selfHeal: true        # Re-apply if someone manually changes K8s resources
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # ── Ignore diffs that are expected (e.g. HPA changes replicas) ──
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas      # HPA manages this
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+      jsonPointers:
+        - /spec/metrics
+
+  # ── Health checks ─────────────────────────────────────────────
+  revisionHistoryLimit: 5

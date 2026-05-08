@@ -1,0 +1,153 @@
+# ─────────────────────────────────────────────────────────────────
+# Base Helm Values — overridden per environment
+# ─────────────────────────────────────────────────────────────────
+
+replicaCount: 2
+
+image:
+  repository: registry.company.com/python-cicd-app
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets:
+  - name: registry-credentials
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# ── App configuration ──────────────────────────────────────────
+app:
+  env: production
+  port: 5000
+  debug: "false"
+  logLevel: info
+
+# ── Environment variables (non-sensitive) ─────────────────────
+env: []
+# - name: SOME_VAR
+#   value: "some_value"
+
+# ── Secrets — reference existing K8s secret ──────────────────
+envFromSecret:
+  enabled: true
+  secretName: python-app-secrets   # Pre-created in cluster
+
+# ── Service ───────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 5000
+  annotations: {}
+
+# ── Ingress ───────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: app.company.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: python-app-tls
+      hosts:
+        - app.company.com
+
+# ── Resources ─────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# ── Autoscaling ───────────────────────────────────────────────
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# ── Probes ────────────────────────────────────────────────────
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: 5000
+  initialDelaySeconds: 15
+  periodSeconds: 20
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: 5000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+startupProbe:
+  httpGet:
+    path: /health/startup
+    port: 5000
+  failureThreshold: 30
+  periodSeconds: 5
+
+# ── Pod security ──────────────────────────────────────────────
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 1001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# ── Pod disruption budget ─────────────────────────────────────
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# ── Affinity / Topology spread ────────────────────────────────
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: python-cicd-app
+
+# ── Monitoring ────────────────────────────────────────────────
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  path: /metrics
+  namespace: monitoring
+
+# ── Volumes (for tmp writes — read-only root FS) ─────────────
+volumes:
+  - name: tmp
+    emptyDir: {}
+  - name: app-db
+    emptyDir: {}
+
+volumeMounts:
+  - name: tmp
+    mountPath: /tmp
+  - name: app-db
+    mountPath: /app/instance

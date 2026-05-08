@@ -1,0 +1,31 @@
+# ── Dev environment overrides ─────────────────────────────────
+replicaCount: 1
+
+app:
+  env: development
+  debug: "true"
+
+ingress:
+  hosts:
+    - host: dev-app.company.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: python-app-dev-tls
+      hosts:
+        - dev-app.company.com
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: false
